@@ -4,7 +4,7 @@ pipeline {
 
     environment {
         SONAR_HOME = tool "Sonar"
-        SONAR_AUTH_TOKEN = credentials('sonar-token') // Replace 'sonar-token' with your SonarQube credentials ID
+        SONAR_AUTH_TOKEN = credentials('Sonar') // Replace 'sonar-token' with your SonarQube credentials ID
     }
 
     parameters {
