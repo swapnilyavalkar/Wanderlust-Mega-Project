@@ -32,7 +32,7 @@ spec:
   selector:
     app: frontend
   ports:
-    - port: 5173
+    - port: 80
       targetPort: 5173
       protocol: TCP
-      nodePort: 31000
+      nodePort: 31242
