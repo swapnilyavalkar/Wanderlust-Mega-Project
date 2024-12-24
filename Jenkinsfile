@@ -4,6 +4,7 @@ pipeline {
 
     environment {
         SONAR_HOME = tool "Sonar"
+        SONAR_AUTH_TOKEN = credentials('sonar-token') // Replace 'sonar-token' with your SonarQube credentials ID
     }
 
     parameters {
@@ -24,35 +25,27 @@ pipeline {
 
         stage("Workspace Cleanup") {
             steps {
-                script {
-                    cleanWs()
-                }
+                cleanWs()
             }
         }
 
         stage("Git: Code Checkout") {
             steps {
-                script {
-                    git branch: 'main',
-                        url: 'https://github.com/swapnilyavalkar/Wanderlust-Mega-Project.git',
-                        credentialsId: 'Github-Cred'
-                }
+                git branch: 'main',
+                    url: 'https://github.com/swapnilyavalkar/Wanderlust-Mega-Project.git',
+                    credentialsId: 'Github-Cred'
             }
         }
 
         stage("Trivy: Filesystem Scan") {
             steps {
-                script {
-                    trivy_scan()
-                }
+                sh "trivy fs ."
             }
         }
 
         stage("OWASP: Dependency Check") {
             steps {
-                script {
-                    owasp_dependency()
-                }
+                dependencyCheck additionalArguments: '--disableNodeAudit'
             }
         }
 
@@ -60,10 +53,14 @@ pipeline {
             steps {
                 script {
                     dir("backend") {
-                        sh "npm install"
+                        retry(3) {
+                            sh "npm install"
+                        }
                     }
                     dir("frontend") {
-                        sh "npm install"
+                        retry(3) {
+                            sh "npm install"
+                        }
                     }
                 }
             }
@@ -71,16 +68,21 @@ pipeline {
 
         stage("SonarQube: Code Analysis") {
             steps {
-                script {
-                    sonarqube_analysis("Sonar", "wanderlust", "wanderlust")
+                withSonarQubeEnv('Sonar') {
+                    sh """
+                        ${SONAR_HOME}/bin/sonar-scanner \
+                        -Dsonar.projectName=wanderlust \
+                        -Dsonar.projectKey=wanderlust \
+                        -Dsonar.login=${SONAR_AUTH_TOKEN}
+                    """
                 }
             }
         }
 
         stage("SonarQube: Code Quality Gates") {
             steps {
-                script {
-                    sonarqube_code_quality()
+                timeout(time: 1, unit: 'MINUTES') {
+                    waitForQualityGate abortPipeline: true
                 }
             }
         }
@@ -89,20 +91,16 @@ pipeline {
             parallel {
                 stage("Backend Env Setup") {
                     steps {
-                        script {
-                            dir("Automations") {
-                                sh "bash updatebackendnew.sh"
-                            }
+                        dir("Automations") {
+                            sh "bash updatebackendnew.sh"
                         }
                     }
                 }
 
                 stage("Frontend Env Setup") {
                     steps {
-                        script {
-                            dir("Automations") {
-                                sh "bash updatefrontendnew.sh"
-                            }
+                        dir("Automations") {
+                            sh "bash updatefrontendnew.sh"
                         }
                     }
                 }
@@ -111,34 +109,36 @@ pipeline {
 
         stage("Docker: Build Images") {
             steps {
-                script {
-                    dir('backend') {
-                        docker_build("wanderlust-backend-beta", "${params.BACKEND_DOCKER_TAG}", "swapnilyavalkar")
-                    }
-                    dir('frontend') {
-                        docker_build("wanderlust-frontend-beta", "${params.FRONTEND_DOCKER_TAG}", "swapnilyavalkar")
-                    }
-                }
+                sh """
+                    docker build -t swapnilyavalkar/wanderlust-backend-beta:${params.BACKEND_DOCKER_TAG} backend/
+                    docker build -t swapnilyavalkar/wanderlust-frontend-beta:${params.FRONTEND_DOCKER_TAG} frontend/
+                """
             }
         }
 
         stage("Docker: Push to DockerHub") {
             steps {
-                script {
-                    docker_push("wanderlust-backend-beta", "${params.BACKEND_DOCKER_TAG}", "swapnilyavalkar")
-                    docker_push("wanderlust-frontend-beta", "${params.FRONTEND_DOCKER_TAG}", "swapnilyavalkar")
-                }
+                sh """
+                    docker push swapnilyavalkar/wanderlust-backend-beta:${params.BACKEND_DOCKER_TAG}
+                    docker push swapnilyavalkar/wanderlust-frontend-beta:${params.FRONTEND_DOCKER_TAG}
+                """
             }
         }
     }
 
     post {
+        always {
+            cleanWs()
+        }
         success {
             archiveArtifacts artifacts: '*.xml', followSymlinks: false
             build job: "Wanderlust-CD", parameters: [
                 string(name: 'FRONTEND_DOCKER_TAG', value: "${params.FRONTEND_DOCKER_TAG}"),
                 string(name: 'BACKEND_DOCKER_TAG', value: "${params.BACKEND_DOCKER_TAG}")
             ]
+        }
+        failure {
+            echo 'Pipeline failed.'
         }
     }
 }
