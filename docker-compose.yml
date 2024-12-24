@@ -24,7 +24,7 @@ services:
     env_file:
       - ./frontend/.env.docker
     ports:
-      - "5173:5173"
+      - "31242:5173"
 
   redis:
     container_name: redis-service
