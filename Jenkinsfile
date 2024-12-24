@@ -3,8 +3,8 @@ pipeline {
     agent { label 'Node' }
 
     environment {
-        SONAR_HOME = tool "Sonar"
-        SONAR_AUTH_TOKEN = credentials('Sonar') // Replace 'sonar-token' with your Jenkins credential ID
+        SONAR_HOME = tool "Sonar" // Ensure Sonar is configured in Jenkins
+        SONAR_AUTH_TOKEN = credentials('Sonar') // Replace 'Sonar' with your Jenkins credential ID
     }
 
     parameters {
@@ -52,13 +52,17 @@ pipeline {
 
         stage("Trivy: Filesystem Scan") {
             steps {
-                sh "trivy fs ."
+                script {
+                    sh "trivy fs ."
+                }
             }
         }
 
         stage("OWASP: Dependency Check") {
             steps {
-                dependencyCheck odcInstallation: 'Default', additionalArguments: '--disableNodeAudit'
+                script {
+                    dependencyCheck odcInstallation: 'Default', additionalArguments: '--disableNodeAudit'
+                }
             }
         }
 
@@ -79,6 +83,19 @@ pipeline {
             steps {
                 timeout(time: 1, unit: 'MINUTES') {
                     waitForQualityGate abortPipeline: true
+                }
+            }
+        }
+
+        stage("Update: Kubernetes Manifests") {
+            steps {
+                script {
+                    dir('kubernetes') {
+                        sh """
+                            sed -i -e "s|wanderlust-backend-beta:[^ ]*|wanderlust-backend-beta:${params.BACKEND_DOCKER_TAG}|g" backend.yaml
+                            sed -i -e "s|wanderlust-frontend-beta:[^ ]*|wanderlust-frontend-beta:${params.FRONTEND_DOCKER_TAG}|g" frontend.yaml
+                        """
+                    }
                 }
             }
         }
@@ -104,19 +121,23 @@ pipeline {
 
         stage("Docker: Build Images") {
             steps {
-                sh """
-                    docker build -t swapnilyavalkar/wanderlust-backend-beta:${params.BACKEND_DOCKER_TAG} backend/
-                    docker build -t swapnilyavalkar/wanderlust-frontend-beta:${params.FRONTEND_DOCKER_TAG} frontend/
-                """
+                script {
+                    sh """
+                        docker build -t swapnilyavalkar/wanderlust-backend-beta:${params.BACKEND_DOCKER_TAG} backend/
+                        docker build -t swapnilyavalkar/wanderlust-frontend-beta:${params.FRONTEND_DOCKER_TAG} frontend/
+                    """
+                }
             }
         }
 
         stage("Docker: Push to DockerHub") {
             steps {
-                sh """
-                    docker push swapnilyavalkar/wanderlust-backend-beta:${params.BACKEND_DOCKER_TAG}
-                    docker push swapnilyavalkar/wanderlust-frontend-beta:${params.FRONTEND_DOCKER_TAG}
-                """
+                script {
+                    sh """
+                        docker push swapnilyavalkar/wanderlust-backend-beta:${params.BACKEND_DOCKER_TAG}
+                        docker push swapnilyavalkar/wanderlust-frontend-beta:${params.FRONTEND_DOCKER_TAG}
+                    """
+                }
             }
         }
     }
