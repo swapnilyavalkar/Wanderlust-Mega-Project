@@ -52,6 +52,19 @@ pipeline {
                 }
             }
         }
+        stage("Install Dependencies") {
+        steps {
+                script {
+                    dir("backend") {
+                        sh "npm install"
+                    }
+                    dir("frontend") {
+                        sh "npm install"
+                    }
+                }
+            }
+        }
+
         
         stage("SonarQube: Code Analysis"){
             steps{
