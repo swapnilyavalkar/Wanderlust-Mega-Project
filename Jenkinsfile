@@ -61,6 +61,7 @@ pipeline {
         stage("OWASP: Dependency Check") {
             steps {
                 script {
+                    // Ensure the installation name matches the one configured in Jenkins
                     dependencyCheck odcInstallation: 'Default', additionalArguments: '--disableNodeAudit'
                 }
             }
